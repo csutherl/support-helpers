@@ -22,17 +22,21 @@ def parseTop():
     # filename = sys.argv[1]
     filename = 'high-cpu.out'
 
-    print("Reading %s" % filename)
+    # print("Reading %s" % filename)
     with open(filename) as f:
         content = f.readlines()
         oldDate = datetime.datetime(1970, 1, 1)
-        newDate = None
 
         for ns_line in content:
             line = ns_line.strip()
+            
+            if len(line) == 0 or line.startswith('PID'):
+                #  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND
+                # skip the header line or blank lines
+                continue
+            
             # grab a date, if it isn't a date, skip this code
             try:
-                #print(line)
                 newDate = datetime.datetime.strptime(line, '%a %b %d %H:%M:%S %Z %Y')
              
                 if newDate > oldDate:
@@ -44,7 +48,6 @@ def parseTop():
             except ValueError:
                 pass
 
-            # check the line for other top data before the process lines
             if line.startswith('top'):
                 # top - 14:24:13 up 4 days, 18:36, 13 users,  load average: 1.79, 1.68, 1.60
                 # grabbing uptime
@@ -97,10 +100,6 @@ def parseTop():
                 percentUsed = int(math.ceil((float(usedSwap) / float(totalSwap)) * 100))
                 cpudata[newDate]['Swap'] = "%s%% used" % percentUsed
                 continue
-            if len(line) == 0 or line.startswith('PID'):
-                #  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND
-                # skip the header line or blank lines
-                continue
     
             # 60131 jboss     20   0 6023m 2.6g  19m S  0.0  9.5   0:00.00 /opt/jboss/java/bin/java -D[Server:myl-3-b] -XX:PermSize=256m -X
             # grab CPU data and parse out things we care about
@@ -116,29 +115,11 @@ def parseTop():
                 pid = words[0]
                 cpu = float(words[8])
                 if cpu >= cpu_threshold:
-                    cpudata[newDate]['processes'].append({'pid': pid, 'hexpid': hex(int(pid)), 'cpu': cpu, 'mem': words[9]})
+                    cpudata[newDate]['processes'].append({'pid': pid, 'hexpid': hex(int(pid)), 'cpu': cpu, 'mem': words[9], 'proc_line': line})
     
-        # del cpudata[cpudata.keys()[0]]
-        print("Done reading file")
-    
-    # now that the data has been parsed, read through and find PIDs that exist in multiple dumps
-    # iterate over all pids and add them to a dict where the key is the pid and the values are the dumps it came from
-    # if there are len(dumps) > 1, then it showed up in multiple and we want to record the thread dumps from those dumps
-    # for that pid
-    seen = {}
-    for dump in cpudata:
-        for proc in cpudata[dump]['processes']:
-            hexpid = proc['hexpid']
-            if dump not in seen.keys():
-                seen[dump] = [hexpid]
-            else:
-                dumps = seen[dump]
-                dumps.append(hexpid)
-                seen[dump] = dumps
-    
-    # return seen
+    # print("Done reading file")
     return cpudata
-  
+   
 def parseThreadDumps(): 
     # stack meta will be keyed on date
     stack_meta = {}
@@ -146,11 +127,9 @@ def parseThreadDumps():
     # filename = sys.argv[1]
     filename = 'high-cpu-tdump.out'
 
-    print("Reading %s" % filename)
+    # print("Reading %s" % filename)
     with open(filename) as f:
         content = f.readlines()
-        # stacks will be keyed on the nid
-        #stacks = {}
         stack_id = 0
         oldDate = datetime.datetime(1970, 1, 1)
     
@@ -165,7 +144,6 @@ def parseThreadDumps():
                 newDate = datetime.datetime.strptime(line, '%a %b %d %H:%M:%S %Z %Y')
     
                 if newDate > oldDate:
-                    #stack_meta[newDate] = stacks
                     stack_meta[newDate] = {}
                     oldDate = newDate
     
@@ -179,10 +157,59 @@ def parseThreadDumps():
             else:
                 stack_meta[newDate][stack_id].append(line)
             
+    # print("Done reading file")
     return stack_meta
 
-def main():
-    pp.pprint(parseTop())
-    pp.pprint(parseThreadDumps())
+def findOffenders(cpudata, jstack_dumps): 
+    # now that the data has been parsed, read through and find PIDs that exist in multiple dumps
+    # iterate over all pids and add them to a dict where the key is the pid and the values are the dumps it came from
+    # if there are len(dumps) > 1, then it showed up in multiple and we want to record the thread dumps from those dumps
+    # for that pid
+    seen = {}
+    for dump in cpudata:
+        for proc in cpudata[dump]['processes']:
+            hexpid = proc['hexpid']
+            if dump not in seen.keys():
+                seen[dump] = [hexpid]
+            else:
+                dumps = seen[dump]
+                dumps.append(hexpid)
+                seen[dump] = dumps
+  
+    print "Offending CPU threads are as follows:\n"
+     
+    for key in seen:
+        print "Dumps captured: %s\n" % key
+        proc_lines = cpudata[key]['processes']
+        for proc in proc_lines:
+            if proc['hexpid'] == seen[key][0]:
+                print "%s\n" % proc['proc_line']
+                first = True
+                for line in jstack_dumps[key][proc['hexpid']]:
+                    if first:
+                        print line
+                        first = False
+                    else:
+                        if line.startswith("Locked"):
+                            print
 
-main()
+                        print "    %s" % line
+                print
+
+    # return seen
+
+def main():
+    # parse the top output into a structure
+    top_dumps = parseTop()
+    # test print
+    #pp.pprint(top_dumps)
+    # parse thread dumps
+    jstack_dumps = parseThreadDumps() 
+    # test print
+    #pp.pprint(jstack_dumps)
+    # find dumps that match and test print
+    #pp.pprint(findOffenders(top_dumps))
+    findOffenders(top_dumps, jstack_dumps)
+
+if __name__ == "__main__":
+    main()
