@@ -16,7 +16,7 @@ __author__ = "coty"
 def parseTop():
     # cpu_threshold is set a the CPU percentage that you consider high
     # process usage will only be recorded if its greater than cpu_threshold
-    cpu_threshold = 20
+    cpu_threshold = 80
     cpudata = {}
 
     # filename = sys.argv[1]
@@ -177,24 +177,32 @@ def findOffenders(cpudata, jstack_dumps):
                 seen[dump] = dumps
   
     print "Offending CPU threads are as follows:\n"
-     
+    
+    it_counter = 1 
     for key in seen:
-        print "Dumps captured: %s\n" % key
+        print "Dumps %s captured: %s\n" % (it_counter, key)
+        it_counter += 1
         proc_lines = cpudata[key]['processes']
         for proc in proc_lines:
             if proc['hexpid'] == seen[key][0]:
                 print "%s\n" % proc['proc_line']
                 first = True
-                for line in jstack_dumps[key][proc['hexpid']]:
-                    if first:
-                        print line
-                        first = False
-                    else:
-                        if line.startswith("Locked"):
-                            print
+                try:
+                    for line in jstack_dumps[key][proc['hexpid']]:
+                        if first:
+                            print line
+                            first = False
+                        else:
+                            if line.startswith("java.lang.Thread.State"):
+                                print "  %s" % line
+                            if line.startswith("Locked"):
+                                print
 
-                        print "    %s" % line
-                print
+                            print "\t%s" % line
+                    print
+                except KeyError as ke:
+                    print "Key (%s) not found in java thread dumps" % ke
+                    pass
 
     # return seen
 
