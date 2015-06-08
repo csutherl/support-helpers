@@ -166,6 +166,10 @@ def findOffenders(cpudata, jstack_dumps):
     # if there are len(dumps) > 1, then it showed up in multiple and we want to record the thread dumps from those dumps
     # for that pid
     seen = {}
+
+    # limits the depth of java thread stacks 
+    frame_limit = 10
+   
     for dump in cpudata:
         for proc in cpudata[dump]['processes']:
             hexpid = proc['hexpid']
@@ -188,6 +192,8 @@ def findOffenders(cpudata, jstack_dumps):
                 print "%s\n" % proc['proc_line']
                 first = True
                 try:
+                    # since there are no indexes, I added a counter to track current java frame
+                    curr_frame = 0
                     for line in jstack_dumps[key][proc['hexpid']]:
                         if first:
                             print line
@@ -199,6 +205,11 @@ def findOffenders(cpudata, jstack_dumps):
                                 print
 
                             print "\t%s" % line
+
+                        # increment counter after each frame and break the loop if its >= the frame_limit
+                        curr_frame += 1
+                        if curr_frame >= frame_limit:
+                            break
                     print
                 except KeyError as ke:
                     print "Key (%s) not found in java thread dumps" % ke
