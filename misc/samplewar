@@ -1,0 +1,17 @@
+#!/bin/sh
+# Usage: ./samplewar [VERSION]
+
+RESET='\e[0m'
+RED='\e[31m'
+GREEN='\e[32m'
+ver=${1-7}
+tmp=$(mktemp)
+
+wget -q -O $tmp https://tomcat.apache.org/tomcat-$ver.0-doc/appdev/sample/sample.war
+if [ "$?" -eq "0"  ]; then
+    mv $tmp ./sample.war
+    echo -e "${GREEN}Downloaded Tomcat $ver sample.war to $(pwd).${RESET}"
+else
+    rm $tmp
+    echo -e "${RED}Cannot download Tomcat $ver sample.war.${RESET}"
+fi
