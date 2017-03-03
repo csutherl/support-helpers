@@ -5,5 +5,6 @@ Run this with `java ManyThreads <NUM_THREADS>` to try and generate an OutOfMemor
 ```
 # su - testuser
 # ulimit -u 24
+# javac ManyThreads.java
 # java ManyThreads 30 <-- Throws OutOfMemoryError.
 ```
